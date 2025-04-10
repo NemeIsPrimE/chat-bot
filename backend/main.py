@@ -1,36 +1,53 @@
+# Import necessary modules
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import openai
-import os
+from pydantic import BaseModel
 from dotenv import load_dotenv
+import os
+import google.generativeai as genai
 
+# Load environment variables from .env file
 load_dotenv()
 
+# Create a FastAPI application instance
 app = FastAPI()
 
-# CORS configuration
+# Configure CORS (Cross-Origin Resource Sharing)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allows all origins (for development only)
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
 )
 
-# Initialize OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set up Gemini API key
+gemini_api_key = os.getenv("GEMINI_API_KEY")
+if not gemini_api_key:
+    raise ValueError("GEMINI_API_KEY not set in .env")
 
-@app.post("/chat")
-async def chat(message: dict):
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",  # or "gpt-3.5-turbo" if you don't have GPT-4 access
-            messages=[{"role": "user", "content": message["text"]}]
-        )
-        return {"response": response.choices[0].message.content}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+genai.configure(api_key=gemini_api_key)
 
+# Define a request model for the /chat endpoint
+class ChatRequest(BaseModel):
+    text: str
+
+# Define a simple root endpoint
 @app.get("/")
+async def root():
+    return {"message": "Hello World"}
+
+# Define a health check endpoint
+@app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+# Define the /chat endpoint using Gemini
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")  # or gemini-pro
+        response = model.generate_content(request.text)
+        return {"response": response.text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
